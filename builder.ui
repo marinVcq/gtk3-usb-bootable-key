@@ -1,0 +1,144 @@
+<interface>
+  <object id="window" class="GtkWindow">
+    <property name="visible">True</property>
+    <property name="title">USB Boot Maker</property>
+    <property name="border-width">40</property>
+    <property name="width-request">400</property>
+    <property name="height-request">600</property>
+    
+    <!-- Formatage container -->
+    <child>
+      <object id="grid" class="GtkGrid">
+        <property name="visible">True</property>
+        <property name="border-width">10</property>
+        <property name="column-spacing">10</property>
+        <property name="row-spacing">15</property>
+        
+		<!-- APP Header -->
+		<child>
+		  <object id="header_box" class="GtkBox">
+		    <property name="visible">True</property>
+		    <property name="halign">center</property>
+		    <property name="valign">center</property>
+		    <property name="hexpand">True</property>
+
+		    <!-- Header Label "Fast Boot Maker-->
+		    <child>
+		      <object id="header_label" class="GtkLabel">
+		        <property name="visible">True</property>
+		        <property name="label">Fast Boot Maker</property>
+		      </object>
+		    </child>
+
+		  </object>
+		  <packing>
+		    <property name="top-attach">0</property>
+		    <property name="left-attach">0</property>
+		    <property name="width">5</property>
+		  </packing>
+		</child>
+		    
+        <!-- Label "Select USB device" -->
+        <child>
+          <object id="label_combobox_usb" class="GtkLabel">
+            <property name="visible">True</property>
+            <property name="label">Select USB Device:</property>
+            <property name="halign">start</property>
+			<property name="valign">center</property>
+          </object>
+          <packing>
+            <property name="left-attach">0</property>
+            <property name="top-attach">1</property>
+            <property name="width">5</property>
+          </packing>
+        </child>
+        
+		<!-- Combobox USB device selection -->
+        <child>
+          <object id="combobox_usb" class="GtkComboBoxText">
+            <property name="visible">True</property>
+            <property name="entry-text-column">0</property>
+            <signal name="changed" handler="on_combobox_usb_changed" swapped="no"/>
+          </object>
+          <packing>
+            <property name="left-attach">0</property>
+            <property name="top-attach">2</property>
+            <property name="width" >5</property>
+          </packing>
+        </child>
+        
+        <!-- Label "Select Format" -->
+        <child>
+          <object id="label_combobox_format" class="GtkLabel">
+            <property name="visible">True</property>
+            <property name="label">Select Format:</property>
+            <property name="halign">start</property>
+			<property name="valign">center</property>
+          </object>
+          <packing>
+            <property name="left-attach">0</property>
+            <property name="top-attach">3</property>
+            <property name="width">5</property>
+          </packing>
+        </child>
+		
+		<!-- Combobox Format selection -->
+        <child>
+          <object id="combobox_format" class="GtkComboBoxText">
+            <property name="visible">True</property>
+            <property name="entry-text-column">0</property>
+            <signal name="changed" handler="on_combobox_format_changed" swapped="no"/>
+          </object>
+          <packing>
+            <property name="left-attach">0</property>
+            <property name="top-attach">4</property>
+            <property name="width" >5</property>
+          </packing>
+        </child>
+        
+        <!-- Format Progress Bar -->
+		<child>
+		  <object id="progress_bar" class="GtkProgressBar">
+			<property name="visible">True</property>
+			<property name="halign">start</property>
+			<property name="valign">center</property>
+			<property name="width-request">200</property>
+		  </object>
+		  <packing>
+			<property name="left-attach">0</property>
+			<property name="top-attach">5</property>
+			<property name="width">4</property>
+		  </packing>
+		</child>
+	
+		<!-- Button format -->
+        <child>
+          <object id="format" class="GtkButton">
+            <property name="visible">True</property>
+            <property name="label">Format</property>
+          </object>
+          <packing>
+            <property name="left-attach">4</property>
+            <property name="top-attach">5</property>
+          </packing>
+        </child>
+        
+        <!-- Button Quit -->
+        <child>
+          <object id="quit" class="GtkButton">
+            <property name="visible">False</property>
+            <property name="label">Quit</property>
+          </object>
+          <packing>
+            <property name="left-attach">0</property>
+            <property name="top-attach">1</property>
+            <property name="width">3</property>
+          </packing>
+        </child>
+        
+      </object>
+    </child>
+    
+  </object>
+</interface>
+

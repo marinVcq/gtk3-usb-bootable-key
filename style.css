@@ -1,0 +1,8 @@
+#custom-header-label {
+    font-size: 28px;  /* You can adjust the size (e.g., medium, larger, x-large, etc.) */
+    font-family: "Arial, sans-serif";  /* Change the font family as needed */
+    font-weight: bold;  /* Adjust font weight (e.g., normal, bold) */
+    color: #333;  /* Change the font color */
+    margin: 10px;
+    /* Add more styles as needed */
+}
