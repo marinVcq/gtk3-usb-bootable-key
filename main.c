@@ -2,93 +2,197 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <glib.h> 
+#include <math.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <signal.h>
+#include <pthread.h>
 
-// Define a structure to hold your application's widgets
+// Structure: App Hold application widgets
 typedef struct {
     GtkBuilder *builder;
     
-    // Variable to store the selected USB device
-    gchar *selected_usb_device;
+    // Variables useful
+    gchar *selected_usb_device; 	// USB NAME
+    gchar *selected_format; 		// USB FORMAT
+    gchar *selected_iso;			// SELECTED ISO FILE
+    gint format_progress_bar_value  // FORMAT: PROGRESS BAR VAL
+    gint iso_progress_bar_value 	// ISO : PROGRESS BAR VAL
     
-    // Container
+    // Grid Container from builder
     GtkGrid *main_grid;
     GtkGrid *format_grid;
     GtkGrid *select_device_grid;
     GtkGrid *create_bootable_grid;
     
-    // Components
+    // Components from builder
     GtkProgressBar *progress_bar;
     GtkProgressBar *bootable_progress_bar;
     GtkImage *header_image;
-    
     GtkLabel *header_label;
     GtkComboBoxText *combobox_usb;
     GtkComboBoxText *combobox_format;
     GtkLabel *label_format_information;
     GtkLabel *label_bootable_information;
     
-    // Buttons
+    // Buttons from builder
     GtkButton *format_button;
     GtkButton *create_bootable_button;
 
 } App;
 
+// Structure: Hold data for the shred command
+typedef struct {
+    App *app;
+    gchar *shred_command;
+} ShredData;
+
+// Function prototypes
 void on_combobox_usb_changed(GtkComboBoxText *combobox, App *app);
 gboolean check_for_usb_changes(gpointer user_data);
 void populate_usb_devices(GtkComboBoxText *combobox, App *app);
 
-gboolean simulate_formating(gpointer user_data) {
-    App *app = (App *)user_data;
-    const char *process_message = "Formatting USB device... ";
-    gtk_label_set_text(app->label_format_information, process_message);
+// Define a signal handler for SIGCHLD
+void handle_child_exit(int signo) {
+    pid_t pid;
+    int status;
 
-    // Counter to simulate progress
-    static int counter = 0;
-
-    // Increment the counter at regular intervals
-    counter++;
-
-    // Update the progress bar
-    double fraction = (double)counter / 5.0;  // Assuming 5 seconds is the total duration
-    gtk_progress_bar_set_fraction(app->progress_bar, fraction);
-
-    if (counter < 5) {
-        // If the counter is less than 5, continue simulating
-        return TRUE;
-    } else {
-        // After 5 seconds, decide the message based on success or failure
-        const char *message;
-        gboolean success = TRUE;  // Simulating success, you should set this based on your actual logic
-        if (success) {
-            message = "Message: Formatting successfully!";
-            // Stop the progress bar
-            gtk_progress_bar_set_fraction(app->progress_bar, 1.0);
-        } else {
-            message = "Message: Formatting failed!";
-        }
-
-        // Update the label with the message
-        gtk_label_set_text(app->label_format_information, message);
-
-        g_print("Formatting USB device... %s\n", message);
-
-        // Returning FALSE removes the timeout source
-        return FALSE;
+    // Reap all terminated child processes
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        // Handle the exit of the child process
+        // Add your logic here if needed
+        printf("Child process %d exited with status %d\n", pid, status);
     }
 }
 
-// Example usage in on_format_button_clicked
-void on_format_button_clicked(GtkButton *button, gpointer user_data) {
-    App *app = (App *)user_data;
-
-    // Reset the counter
-    static int counter = 0;
-    counter = 0;
-
-    // Start the timeout to simulate formatting
-    g_timeout_add_seconds(1, simulate_formating, app);
+// Function: Update progress bar
+void update_progress(gdouble fraction, App *app) {
+    gtk_progress_bar_set_fraction(app->progress_bar, fraction);
+    gtk_main_iteration();  // Process GTK events to update the GUI
+    g_print("update progress bar\n");
 }
 
+// Function: Format usb device
+void format_usb_device(App *app) {
+
+    // Build the mkfs command based selected format and selected device
+    gchar *mkfs_command;
+    if (g_strcmp0(app->selected_format, "FAT32") == 0) {
+        mkfs_command = g_strdup_printf("sudo mkfs.vfat %s", app->selected_usb_device);
+    } else if (g_strcmp0(app->selected_format, "NTFS") == 0) {
+        mkfs_command = g_strdup_printf("sudo mkfs.ntfs %s", app->selected_usb_device);
+    } else {
+        g_print("Error: Unsupported format\n");
+        return;
+    }
+
+    // Execute the mkfs command using popen
+    FILE *mkfs_output = popen(mkfs_command, "r");
+    if (mkfs_output == NULL) {
+        g_printerr("Error running mkfs command\n");
+        g_free(mkfs_command);
+        return;
+    }
+
+    // Read and print the output of the mkfs command
+    char buffer[256];
+    while (fgets(buffer, sizeof(buffer), mkfs_output) != NULL) {
+        g_print("Formatting: %s\n", buffer);
+    }
+
+    // Close the mkfs process
+    pclose(mkfs_output);
+
+    // Free the mkfs command string
+    g_free(mkfs_command);
+
+    g_print("FORMATTING ENDED...\n"); // Temp
+}
+
+// Function: Run the shred command asynchronously
+void *run_shred_command(void *data) {
+    ShredData *shred_data = (ShredData *)data;
+
+    // Build the shred command with error redirection
+    gchar *shred_command_with_redirect = g_strdup_printf("%s 2>&1", shred_data->shred_command);
+
+    // Open the pipe for reading
+    FILE *shred_output = popen(shred_command_with_redirect, "r");
+    if (shred_output == NULL) {
+        g_printerr("Error running shred command\n");
+        g_free(shred_data->shred_command);
+        g_free(shred_data);
+        g_free(shred_command_with_redirect); // Free the modified command
+        return NULL;
+    }
+
+    // Read and print the output of the shred command in a separate thread
+    char buffer[256];
+    while (fgets(buffer, sizeof(buffer), shred_output) != NULL) {
+        g_print("Buffer: %s", buffer);
+        fflush(stdout);
+    }
+
+    if (feof(shred_output)) {
+        g_print("End of file reached (feof)\n");
+    } else if (ferror(shred_output)) {
+        g_print("Error reading file (ferror)\n");
+        perror("fgets");
+    } else {
+        g_print("Buffer reading loop exited normally\n");
+    }
+
+    // Check if pclose reports any error
+    int pclose_status = pclose(shred_output);
+    if (pclose_status == -1) {
+        g_printerr("Error in pclose\n");
+        perror("pclose");
+    } else {
+        g_print("pclose exited normally with status %d\n", pclose_status);
+    }
+
+    // Free the shred command string and data structure
+    g_free(shred_data->shred_command);
+    g_free(shred_data);
+    g_free(shred_command_with_redirect); // Free the modified command
+
+    g_print("Shredding complete\n");
+
+    // Return NULL as required by pthread_create
+    return NULL;
+}
+
+// Modified on_format_button_clicked function
+void on_format_button_clicked(GtkButton *button, gpointer user_data) {
+    // Get App structure (Format and selected devices)
+    App *app = (App *)user_data;
+
+    // Check if a USB device and format are selected
+    if (app->selected_usb_device == NULL || app->selected_format == NULL) {
+        g_print("Error: USB device or format not selected\n");
+        return;
+    }
+
+    // Build the shred command
+    gchar *shred_command = g_strdup_printf("pkexec shred -v -n 1 -s 1G --random-source=/dev/urandom %s", app->selected_usb_device);
+
+    // Create a data structure to pass to the thread
+    ShredData *shred_data = g_new(ShredData, 1);
+    shred_data->app = app;
+    shred_data->shred_command = shred_command;
+
+    // Create a thread to run the shred command asynchronously
+    pthread_t thread_id;
+    if (pthread_create(&thread_id, NULL, run_shred_command, shred_data) != 0) {
+        g_printerr("Error creating thread\n");
+        g_free(shred_command);
+        g_free(shred_data);
+        return;
+    }
+
+    // Detach the thread to allow it to run independently
+    pthread_detach(thread_id);
+}
 // Signal handler for USB device selection change
 void on_combobox_usb_changed(GtkComboBoxText *combobox, App *app) {
 
@@ -104,6 +208,22 @@ void on_combobox_usb_changed(GtkComboBoxText *combobox, App *app) {
 
     // Print the selected USB device to the console
     g_print("Selected USB device: %s\n", app->selected_usb_device);
+}
+
+// Signal handler for Format selection change
+void on_combobox_format_changed(GtkComboBoxText *combobox, App *app) {
+    // Get the selected format
+    const gchar *selected_format = gtk_combo_box_text_get_active_text(combobox);
+    
+    if (selected_format != NULL) {
+        // Free the previously selected format
+        g_free(app->selected_format);
+        // Store the selected format in the App structure
+        app->selected_format = g_strdup(selected_format);    
+    }
+
+    // Print the selected format to the console
+    g_print("Selected Format: %s\n", app->selected_format);
 }
 
 // New function to dynamically update the USB devices list
@@ -195,6 +315,8 @@ App *create_app(GtkBuilder *builder) {
     
     // Initialize the selected USB device to NULL
     app->selected_usb_device = NULL;
+    app->selected_format = NULL;
+
 
     return app;
 }
@@ -218,6 +340,9 @@ int main(int argc, char *argv[]) {
         g_clear_error(&error);
         return 1;
     }
+    
+        // Set up signal handler for SIGCHLD
+    signal(SIGCHLD, handle_child_exit);
 
     // Load CSS file and set the provider
     GtkCssProvider *provider = gtk_css_provider_new();
@@ -252,6 +377,7 @@ int main(int argc, char *argv[]) {
     // Button Format event
     g_signal_connect(app->format_button, "clicked", G_CALLBACK(on_format_button_clicked), app);
     g_signal_connect(app->combobox_usb, "changed", G_CALLBACK(on_combobox_usb_changed), app);
+    g_signal_connect(app->combobox_format, "changed", G_CALLBACK(on_combobox_format_changed), app);
     app->label_format_information = GTK_LABEL(gtk_builder_get_object(builder, "label_format_information"));
 
 
