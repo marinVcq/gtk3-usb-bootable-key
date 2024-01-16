@@ -7,6 +7,10 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <pthread.h>
+#include <ctype.h>
+
+
+GMutex mutex;
 
 // Structure: App Hold application widgets
 typedef struct {
@@ -16,8 +20,8 @@ typedef struct {
     gchar *selected_usb_device; 	// USB NAME
     gchar *selected_format; 		// USB FORMAT
     gchar *selected_iso;			// SELECTED ISO FILE
-    gint format_progress_bar_value  // FORMAT: PROGRESS BAR VAL
-    gint iso_progress_bar_value 	// ISO : PROGRESS BAR VAL
+    gint format_progress_bar_value ; // FORMAT: PROGRESS BAR VAL
+    gint iso_progress_bar_value ;	// ISO : PROGRESS BAR VAL
     
     // Grid Container from builder
     GtkGrid *main_grid;
@@ -65,12 +69,21 @@ void handle_child_exit(int signo) {
     }
 }
 
-// Function: Update progress bar
-void update_progress(gdouble fraction, App *app) {
+void update_formating_status(gint percent, App *app, const char *message) {
+    gdouble fraction = (gdouble)percent / 100.0;
+
+    // Set text for label_format_information
+    gtk_label_set_text(app->label_format_information, message);
     gtk_progress_bar_set_fraction(app->progress_bar, fraction);
-    gtk_main_iteration();  // Process GTK events to update the GUI
+    
+    // Process GTK events to update the GUI
+    while (gtk_events_pending()) {
+        gtk_main_iteration_do(FALSE);
+    }
+    
     g_print("update progress bar\n");
 }
+
 
 // Function: Format usb device
 void format_usb_device(App *app) {
@@ -78,7 +91,7 @@ void format_usb_device(App *app) {
     // Build the mkfs command based selected format and selected device
     gchar *mkfs_command;
     if (g_strcmp0(app->selected_format, "FAT32") == 0) {
-        mkfs_command = g_strdup_printf("sudo mkfs.vfat %s", app->selected_usb_device);
+        mkfs_command = g_strdup_printf("mkfs.vfat %s", app->selected_usb_device);
     } else if (g_strcmp0(app->selected_format, "NTFS") == 0) {
         mkfs_command = g_strdup_printf("sudo mkfs.ntfs %s", app->selected_usb_device);
     } else {
@@ -109,6 +122,16 @@ void format_usb_device(App *app) {
     g_print("FORMATTING ENDED...\n"); // Temp
 }
 
+// Function: Extract Percentage from pipe output
+int extractPercentage(char buffer[256]) {
+    const char *percentStr = strstr(buffer, "%"); // Find the '%' character
+    if (percentStr != NULL) {
+        int percent;
+        sscanf(percentStr - 4, "%d", &percent); // Assuming the percentage is always two digits
+        return percent;
+    }
+    return -1; // If '%' is not found
+}
 // Function: Run the shred command asynchronously
 void *run_shred_command(void *data) {
     ShredData *shred_data = (ShredData *)data;
@@ -131,25 +154,32 @@ void *run_shred_command(void *data) {
     while (fgets(buffer, sizeof(buffer), shred_output) != NULL) {
         g_print("Buffer: %s", buffer);
         fflush(stdout);
+        
+		int percent = extractPercentage(buffer);
+
+
+		if (percent != -1) {
+		    printf("Percentage: %d\n", percent);
+		    gchar *percent_message = g_strdup_printf("Formatting: %d%%", percent);
+		    update_formating_status((gdouble)percent, shred_data->app, percent_message);
+		    g_free(percent_message);
+		}else {
+		    printf("Percentage not found\n");
+		}
     }
 
     if (feof(shred_output)) {
         g_print("End of file reached (feof)\n");
+        format_usb_device(shred_data->app);
+        
     } else if (ferror(shred_output)) {
         g_print("Error reading file (ferror)\n");
         perror("fgets");
     } else {
         g_print("Buffer reading loop exited normally\n");
     }
-
-    // Check if pclose reports any error
+    
     int pclose_status = pclose(shred_output);
-    if (pclose_status == -1) {
-        g_printerr("Error in pclose\n");
-        perror("pclose");
-    } else {
-        g_print("pclose exited normally with status %d\n", pclose_status);
-    }
 
     // Free the shred command string and data structure
     g_free(shred_data->shred_command);
@@ -161,6 +191,7 @@ void *run_shred_command(void *data) {
     // Return NULL as required by pthread_create
     return NULL;
 }
+
 
 // Modified on_format_button_clicked function
 void on_format_button_clicked(GtkButton *button, gpointer user_data) {
