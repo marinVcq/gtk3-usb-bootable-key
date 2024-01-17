@@ -77,7 +77,6 @@
 				  <packing>
 					<property name="left-attach">0</property>
 					<property name="top-attach">0</property>
-					<property name="width">5</property>
 				  </packing>
 				</child>
 				
@@ -91,7 +90,6 @@
 				  <packing>
 					<property name="left-attach">0</property>
 					<property name="top-attach">1</property>
-					<property name="width" >5</property>
 				  </packing>
 				</child>
 				
@@ -109,22 +107,49 @@
 			<property name="border-width">0</property>
 			<property name="column-spacing">10</property>
 			<property name="row-spacing">15</property>
-			<property name="hexpand">True</property> 
-				
+			<property name="hexpand">True</property>
 			
+			<!-- Label "New device label" -->
+			<child>
+			  <object id="label_device_label" class="GtkLabel">
+				<property name="visible">True</property>
+				<property name="label">Set new device label:</property>
+				<property name="halign">start</property>
+				<property name="hexpand">True</property>
+				<property name="valign">center</property>
+				
+			  </object>
+			  <packing>
+				<property name="left-attach">0</property>
+				<property name="top-attach">0</property>
+			  </packing>
+			</child>
+			
+			<!-- Entry for the new device label -->
+			<child>
+			  <object id="entry_new_device_label" class="GtkEntry">
+				<property name="visible">True</property>
+				<property name="hexpand">True</property>
+			  </object>
+			  <packing>
+				<property name="left-attach">0</property>
+				<property name="top-attach">1</property>
+				<property name="width">2</property>
+			  </packing>
+			</child>
+		
 			<!-- Label "Select Format" -->
 			<child>
 			  <object id="label_combobox_format" class="GtkLabel">
-			    <property name="visible">True</property>
+			    <property name="visible">False</property>
 			    <property name="label">Select Format:</property>
 			    <property name="halign">start</property>
 			    <property name="hexpand">True</property> 
 				<property name="valign">center</property>
 			  </object>
 			  <packing>
-			    <property name="left-attach">0</property>
-			    <property name="top-attach">3</property>
-			    <property name="width">5</property>
+			  	<property name="left-attach">0</property>
+			    <property name="top-attach">2</property>
 			  </packing>
 			</child>
 			
@@ -137,8 +162,8 @@
 			  </object>
 			  <packing>
 			    <property name="left-attach">0</property>
-			    <property name="top-attach">4</property>
-			    <property name="width" >5</property>
+			    <property name="top-attach">3</property>
+			    <property name="width">2</property>
 			  </packing>
 			</child>
 			
@@ -148,12 +173,12 @@
 				<property name="visible">True</property>
 				<property name="halign">start</property>
 				<property name="valign">center</property>
-				<property name="width-request">200</property>
+				<property name="hexpand">True</property> 
+				<property name="width-request">300</property>
 			  </object>
 			  <packing>
 				<property name="left-attach">0</property>
-				<property name="top-attach">5</property>
-				<property name="width">5</property>
+				<property name="top-attach">4</property>
 			  </packing>
 			</child>
 		
@@ -164,8 +189,8 @@
 			    <property name="label">Format</property>
 			  </object>
 			  <packing>
-			    <property name="left-attach">4</property>
-			    <property name="top-attach">5</property>
+			    <property name="left-attach">1</property>
+			    <property name="top-attach">4</property>
 			  </packing>
 			</child>
 			
@@ -174,32 +199,22 @@
 			  <object id="label_format_information" class="GtkLabel">
 			    <property name="visible">True</property>
 			    <property name="halign">start</property>
+			    <property name="hexpand">True</property>
 				<property name="valign">center</property>
 			  </object>
 			  <packing>
 			    <property name="left-attach">0</property>
-			    <property name="top-attach">6</property>
-			    <property name="width">5</property>
+			    <property name="top-attach">5</property>
+			    <property name="width" >2</property>
 			  </packing>
 			</child>
-			
-			<!-- Button Quit -->
-			<child>
-			  <object id="quit" class="GtkButton">
-			    <property name="visible">False</property>
-			    <property name="label">Quit</property>
-			  </object>
-			  <packing>
-			    <property name="left-attach">0</property>
-			    <property name="top-attach">1</property>
-			    <property name="width">3</property>
-			  </packing>
-			</child>
+		
 			
 		  </object>
 		  <packing>
 			<property name="top-attach">2</property>
 			<property name="left-attach">0</property>
+			<property name="width" >1</property>
 		  </packing>
 		</child>
 
@@ -224,22 +239,22 @@
 			  </object>
 			  <packing>
 			    <property name="left-attach">0</property>
-			    <property name="top-attach">3</property>
+			    <property name="top-attach">0</property>
+			    <property name="width">2</property>
 			  </packing>
 			</child>
+			
 			
 			<!-- FileChooserButton for ISO selection -->
 			<child>
 			  <object id="file_chooser_iso" class="GtkFileChooserButton">
 				<property name="visible">True</property>
 				<property name="action">GTK_FILE_CHOOSER_ACTION_OPEN</property>
-				<property name="halign">start</property>
-				<property name="valign">center</property>
-				<property name="hexpand">True</property> 
 			  </object>
 			  <packing>
 				<property name="left-attach">0</property>
-				<property name="top-attach">4</property>
+				<property name="top-attach">1</property>
+				<property name="width">2</property>
 			  </packing>
 			</child>
 			
@@ -249,24 +264,23 @@
 				<property name="visible">True</property>
 				<property name="halign">start</property>
 				<property name="valign">center</property>
-				<property name="width-request">200</property>
+				<property name="width-request">300</property>
 			  </object>
 			  <packing>
 				<property name="left-attach">0</property>
-				<property name="top-attach">5</property>
-				<property name="width">5</property>
+				<property name="top-attach">2</property>
 			  </packing>
 			</child>
 		
-			<!-- Button format -->
+			<!-- Button Load ISO-->
 			<child>
 			  <object id="create_bootable_button" class="GtkButton">
 			    <property name="visible">True</property>
 			    <property name="label">Load ISO</property>
 			  </object>
 			  <packing>
-			    <property name="left-attach">4</property>
-			    <property name="top-attach">5</property>
+			    <property name="left-attach">1</property>
+			    <property name="top-attach">2</property>
 			  </packing>
 			</child>
 			
@@ -279,8 +293,8 @@
 			  </object>
 			  <packing>
 			    <property name="left-attach">0</property>
-			    <property name="top-attach">6</property>
-			    <property name="width">5</property>
+			    <property name="top-attach">3</property>
+			    <property name="width" >2</property>
 			  </packing>
 			</child>
 			
