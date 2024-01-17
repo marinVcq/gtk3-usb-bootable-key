@@ -12,16 +12,34 @@
 
 GMutex mutex;
 
+// Structure: Hold data of the shred command
+typedef struct {
+    gchar *shred_command;
+    gchar *shred_message;
+    FILE *shred_output;
+    gint shred_percent;
+} ShredData;
+
+// Structure: Hold data of the mkfs command
+typedef struct {
+    gchar *mkfs_command;
+    gchar *mkfs_message;
+    FILE *mkfs_output;
+    gint mkfs_percent;
+} MkfsData;
+
 // Structure: App Hold application widgets
 typedef struct {
     GtkBuilder *builder;
     
     // Variables useful
-    gchar *selected_usb_device; 	// USB NAME
-    gchar *selected_format; 		// USB FORMAT
-    gchar *selected_iso;			// SELECTED ISO FILE
-    gint format_progress_bar_value ; // FORMAT: PROGRESS BAR VAL
-    gint iso_progress_bar_value ;	// ISO : PROGRESS BAR VAL
+    gchar *selected_usb_device; 		// USB NAME
+    gchar *selected_format; 			// USB FORMAT
+    gchar *selected_iso;				// SELECTED ISO FILE
+    gint format_progress_bar_value ; 	// FORMAT: PROGRESS BAR VAL
+    gint iso_progress_bar_value ;		// ISO : PROGRESS BAR VAL
+    ShredData *shred_data;				// STORE SHRED INFO
+    MkfsData *mkfs_data; 				// STORE MKFS INFO
     
     // Grid Container from builder
     GtkGrid *main_grid;
@@ -42,37 +60,29 @@ typedef struct {
     // Buttons from builder
     GtkButton *format_button;
     GtkButton *create_bootable_button;
-
+    
 } App;
-
-// Structure: Hold data for the shred command
-typedef struct {
-    App *app;
-    gchar *shred_command;
-} ShredData;
 
 // Function prototypes
 void on_combobox_usb_changed(GtkComboBoxText *combobox, App *app);
 gboolean check_for_usb_changes(gpointer user_data);
 void populate_usb_devices(GtkComboBoxText *combobox, App *app);
 
-// Define a signal handler for SIGCHLD
+// Function: Signal handler for SIGCHLD
 void handle_child_exit(int signo) {
     pid_t pid;
     int status;
 
     // Reap all terminated child processes
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        // Handle the exit of the child process
-        // Add your logic here if needed
         printf("Child process %d exited with status %d\n", pid, status);
     }
 }
 
-void update_formating_status(gint percent, App *app, const char *message) {
-    gdouble fraction = (gdouble)percent / 100.0;
+// Function: Update UI information for format feature
+void update_format_UI_information(gint percent, App *app, const char *message) {
 
-    // Set text for label_format_information
+    gdouble fraction = (gdouble)percent / 100.0;
     gtk_label_set_text(app->label_format_information, message);
     gtk_progress_bar_set_fraction(app->progress_bar, fraction);
     
@@ -93,7 +103,7 @@ void format_usb_device(App *app) {
     if (g_strcmp0(app->selected_format, "FAT32") == 0) {
         mkfs_command = g_strdup_printf("mkfs.vfat %s", app->selected_usb_device);
     } else if (g_strcmp0(app->selected_format, "NTFS") == 0) {
-        mkfs_command = g_strdup_printf("sudo mkfs.ntfs %s", app->selected_usb_device);
+        mkfs_command = g_strdup_printf("mkfs.ntfs %s", app->selected_usb_device);
     } else {
         g_print("Error: Unsupported format\n");
         return;
@@ -122,8 +132,12 @@ void format_usb_device(App *app) {
     g_print("FORMATTING ENDED...\n"); // Temp
 }
 
-// Function: Extract Percentage from pipe output
-int extractPercentage(char buffer[256]) {
+void format_usb_device_async(App *app) {
+    g_idle_add((GSourceFunc)format_usb_device, app);
+}
+
+// Function: Extract Percentage from shred output
+int extract_percent_from_shred_output(char buffer[256]) {
     const char *percentStr = strstr(buffer, "%"); // Find the '%' character
     if (percentStr != NULL) {
         int percent;
@@ -132,61 +146,119 @@ int extractPercentage(char buffer[256]) {
     }
     return -1; // If '%' is not found
 }
-// Function: Run the shred command asynchronously
-void *run_shred_command(void *data) {
-    ShredData *shred_data = (ShredData *)data;
+
+// Function: Extract Percentage from mkfs output
+int extract_percent_from_mkfs_output(char buffer[256]) {
+    return 100;// If '%' is not found
+}
+
+// Function: Run the shred & mkfs command asynchronously and format the selected device
+void *formatting_device_async(void *user_data) {
+    App *app = (App *)user_data;
 
     // Build the shred command with error redirection
-    gchar *shred_command_with_redirect = g_strdup_printf("%s 2>&1", shred_data->shred_command);
+    gchar *shred_command_with_redirect = g_strdup_printf("%s 2>&1", app->shred_data->shred_command);
 
     // Open the pipe for reading
-    FILE *shred_output = popen(shred_command_with_redirect, "r");
-    if (shred_output == NULL) {
+    app->shred_data->shred_output = popen(shred_command_with_redirect, "r");
+    if (app->shred_data->shred_output == NULL) {
         g_printerr("Error running shred command\n");
-        g_free(shred_data->shred_command);
-        g_free(shred_data);
-        g_free(shred_command_with_redirect); // Free the modified command
+        g_free(app->shred_data->shred_command);
+        g_free(app->shred_data);
+        g_free(shred_command_with_redirect);
         return NULL;
     }
 
-    // Read and print the output of the shred command in a separate thread
+    // Read and print the output of the shred command
     char buffer[256];
-    while (fgets(buffer, sizeof(buffer), shred_output) != NULL) {
+    while (fgets(buffer, sizeof(buffer), app->shred_data->shred_output) != NULL) {
         g_print("Buffer: %s", buffer);
         fflush(stdout);
         
-		int percent = extractPercentage(buffer);
-
-
-		if (percent != -1) {
-		    printf("Percentage: %d\n", percent);
-		    gchar *percent_message = g_strdup_printf("Formatting: %d%%", percent);
-		    update_formating_status((gdouble)percent, shred_data->app, percent_message);
-		    g_free(percent_message);
+        // Parse output to retrive the percent status
+		app->shred_data->shred_percent = extract_percent_from_shred_output(buffer);
+		
+		// Update format information 
+		if (app->shred_data->shred_percent != -1) {
+		    printf("Percentage: %d\n", app->shred_data->shred_percent);
+		    app->shred_data->shred_message = g_strdup_printf("Overwriting your device with shred command...\nStatus: %d%%", app->shred_data->shred_percent);
+		    update_format_UI_information((gdouble)app->shred_data->shred_percent, app, app->shred_data->shred_message);
+		    g_free(app->shred_data->shred_message);
 		}else {
-		    printf("Percentage not found\n");
+		    printf("Overwriting your device with shred command...\nStatus: 0%%");
 		}
     }
 
-    if (feof(shred_output)) {
-        g_print("End of file reached (feof)\n");
-        format_usb_device(shred_data->app);
+    if (feof(app->shred_data->shred_output)) {
+    	
+    	// Inform User shred command succesfully execute
+    	app->shred_data->shred_message = g_strdup_printf("Overwriting your device with shred command...\nStatus: Completed");
+        update_format_UI_information((gdouble)app->shred_data->shred_percent, app, app->shred_data->shred_message);
         
-    } else if (ferror(shred_output)) {
+        // Shred command completed lets run mkfs command and format the device
+        // g_idle_add((GSourceFunc)format_usb_device_async, app); -- Not in use for now
+        
+		// Build the mkfs command based selected format and selected device
+		if (g_strcmp0(app->selected_format, "FAT32") == 0) {
+		    app->mkfs_data->mkfs_command = g_strdup_printf("pkexec mkfs.vfat -v %s", app->selected_usb_device);
+		} else if (g_strcmp0(app->selected_format, "NTFS") == 0) {
+		    app->mkfs_data->mkfs_command = g_strdup_printf("mkfs.ntfs -v %s", app->selected_usb_device);
+		} else {
+		    g_print("Error: Unsupported format\n");
+		}
+
+		// Execute the mkfs command using popen
+		app->mkfs_data->mkfs_output = popen(app->mkfs_data->mkfs_command, "r");
+		if (app->mkfs_data->mkfs_output == NULL) {
+		    g_printerr("Error running mkfs command\n");
+		    g_free(app->mkfs_data->mkfs_command);
+		    return NULL;
+		}
+
+		
+	    // Read and print the output of the mkfs command
+		char buffer[256];
+		while (fgets(buffer, sizeof(buffer), app->mkfs_data->mkfs_output) != NULL) {
+		    g_print("Buffer: %s", buffer);
+		    fflush(stdout);
+		    
+		    // Parse output to retrive the percent status
+			app->mkfs_data->mkfs_percent = extract_percent_from_mkfs_output(buffer);
+			
+			// Update format information
+			if (app->mkfs_data->mkfs_percent != -1) {
+				printf("Percentage: %d\n", app->mkfs_data->mkfs_percent);
+				app->mkfs_data->mkfs_message = g_strdup_printf("Building file system with mkfs command...\nStatus: %d%%", app->mkfs_data->mkfs_percent);
+				update_format_UI_information((gdouble)app->mkfs_data->mkfs_percent, app, app->mkfs_data->mkfs_message);
+				g_free(app->mkfs_data->mkfs_message);
+			}else {
+				printf("Overwriting your device with shred command...\nStatus: 0%%");
+			}
+		}
+
+		// Close the mkfs process
+		pclose(app->mkfs_data->mkfs_output);
+		
+		app->mkfs_data->mkfs_message = g_strdup_printf("Formatting completed");
+		update_format_UI_information((gdouble)app->mkfs_data->mkfs_percent, app, app->mkfs_data->mkfs_message);
+
+		// Free the mkfs command string
+		g_free(app->mkfs_data->mkfs_command);
+        
+    } else if (ferror(app->shred_data->shred_output)) {
         g_print("Error reading file (ferror)\n");
         perror("fgets");
     } else {
         g_print("Buffer reading loop exited normally\n");
     }
     
-    int pclose_status = pclose(shred_output);
+    // Close the pipe and store status
+    int pclose_status = pclose(app->shred_data->shred_output);
 
     // Free the shred command string and data structure
-    g_free(shred_data->shred_command);
-    g_free(shred_data);
+    g_free(app->shred_data->shred_command);
+    g_free(app->shred_data);
     g_free(shred_command_with_redirect); // Free the modified command
-
-    g_print("Shredding complete\n");
 
     // Return NULL as required by pthread_create
     return NULL;
@@ -209,15 +281,15 @@ void on_format_button_clicked(GtkButton *button, gpointer user_data) {
 
     // Create a data structure to pass to the thread
     ShredData *shred_data = g_new(ShredData, 1);
-    shred_data->app = app;
-    shred_data->shred_command = shred_command;
+    app->shred_data = shred_data;
+    app->shred_data->shred_command = shred_command;
 
     // Create a thread to run the shred command asynchronously
     pthread_t thread_id;
-    if (pthread_create(&thread_id, NULL, run_shred_command, shred_data) != 0) {
+    if (pthread_create(&thread_id, NULL, formatting_device_async, app) != 0) {
         g_printerr("Error creating thread\n");
         g_free(shred_command);
-        g_free(shred_data);
+        g_free(app->shred_data);
         return;
     }
 

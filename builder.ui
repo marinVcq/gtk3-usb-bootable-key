@@ -3,7 +3,7 @@
     <property name="visible">True</property>
     <property name="title">USB Boot Maker</property>
     <property name="border-width">0</property>
-    <property name="width-request">450</property>
+    <property name="width-request">470</property>
     <property name="height-request">600</property>
     
     <!-- Main Grid container -->
