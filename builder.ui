@@ -141,7 +141,7 @@
 			<!-- Checkbox for "Don't overwrite the device" -->
 			<child>
 			  <object id="checkbox_dont_overwrite" class="GtkCheckButton">
-				<property name="label">Don't overwrite the device</property>
+				<property name="label">Do not Overwrite</property>
 				<property name="visible">True</property>
 			  </object>
 			  <packing>
@@ -285,7 +285,7 @@
 			
 			<!-- ISO Process Progress Bar -->
 			<child>
-			  <object id="load_iso_progress_bar" class="GtkProgressBar">
+			  <object id="iso_progress_bar" class="GtkProgressBar">
 				<property name="visible">True</property>
 				<property name="halign">start</property>
 				<property name="valign">center</property>
@@ -313,7 +313,7 @@
 			<child>
 			  <object id="cancel_load_iso_button" class="GtkButton">
 			    <property name="visible">False</property>
-			    <property name="label"></property>
+			    <property name="label">Cancel</property>
 			  </object>
 			  <packing>
 			    <property name="left-attach">1</property>
