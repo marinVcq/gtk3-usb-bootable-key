@@ -239,6 +239,7 @@ int extract_percent_from_formatting_output(char buffer[256]) {
 // Function: Extract Percentage from iso script output
 int extract_percent_from_iso_output(char buffer[256], int iso_size) {
     const char *gbStr = strstr(buffer, "GB"); // Find the 'GB' substring
+
     if (gbStr != NULL) {
         float gb;
         sscanf(gbStr - 4, "%f", &gb);
@@ -259,10 +260,17 @@ int extract_percent_from_iso_output(char buffer[256], int iso_size) {
         }
     }
 
-    // If 'GB' is not found
-    g_print("Error: 'GB' not found in the buffer.\n");
+    // If 'GB' is not found, check for the success message
+    const char *successStr = strstr(buffer, "Bootable USB created successfully");
+    if (successStr != NULL) {
+        return 100;
+    }
+
+    // If neither 'GB' nor success message is found
+    g_print("Error: 'GB' not found in the buffer, and Bootable USB creation message not found.\n");
     return -1;
 }
+
 
 // Function: Run the shred & mkfs commands asynchronously and format the selected device
 void *formatting_device_async(void *user_data) {
@@ -354,7 +362,15 @@ void *load_iso_async(void *user_data) {
 		// Parse output to retrieve the percent status
 		app->iso_percent_value = extract_percent_from_iso_output(buffer, iso_size_gb);
 		gchar *info_message = g_strdup_printf("%d%% copied... Please Wait",app->iso_percent_value );  
-		update_iso_UI_information((gdouble)app->iso_percent_value, app, info_message);
+		
+		if(app->iso_percent_value > 0){
+			update_iso_UI_information((gdouble)app->iso_percent_value, app, info_message);
+		}
+		
+		if(app->iso_percent_value == 100){
+			update_iso_UI_information((gdouble)app->iso_percent_value, app, "Bootable USB created successfully!");
+		}
+		
 		g_free(info_message);  // Now free the allocated memory
 	}
 
