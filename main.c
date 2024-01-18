@@ -8,6 +8,7 @@
 #include <signal.h>
 #include <pthread.h>
 #include <ctype.h>
+#include <stdbool.h>
 
 
 GMutex mutex;
@@ -42,6 +43,7 @@ typedef struct {
     MkfsData *mkfs_data; 				// STORE MKFS INFO
     gchar *new_device_label;			// NEW USB LABEL
     gchar *device_label;				// FORMER USB LABEL
+	pthread_t formatting_thread_id;     // STORE FORMAT THREAD ID
     
     // Grid Container from builder
     GtkGrid *main_grid;
@@ -49,21 +51,28 @@ typedef struct {
     GtkGrid *select_device_grid;
     GtkGrid *create_bootable_grid;
     
-    // Components from builder
-    GtkProgressBar *progress_bar;
-    GtkProgressBar *bootable_progress_bar;
+    // Widgets from builder
+    GtkProgressBar *format_progress_bar;
+    GtkProgressBar *load_iso_progress_bar;
     GtkImage *header_image;
     GtkLabel *header_label;
     GtkComboBoxText *combobox_usb;
     GtkComboBoxText *combobox_format;
     GtkLabel *label_format_information;
-    GtkLabel *label_bootable_information;
+    GtkLabel *label_load_iso_information;
+    GtkEntry *entry_new_device_label;
     
     // Buttons from builder
-    GtkButton *format_button;
-    GtkButton *create_bootable_button;
+    GtkWidget *format_button;
+    GtkWidget *cancel_format_button;
+    GtkButton *load_iso_button;
+    GtkButton *cancel_load_iso_button;
     
 } App;
+
+// Flag to signal cancellation
+volatile sig_atomic_t cancel_load_iso = 0;
+volatile sig_atomic_t cancel_format = 0;
 
 // Function prototypes
 void on_combobox_usb_changed(GtkComboBoxText *combobox, App *app);
@@ -98,7 +107,7 @@ void update_format_UI_information(gint percent, App *app, const char *message) {
 
     gdouble fraction = (gdouble)percent / 100.0;
     gtk_label_set_text(app->label_format_information, message);
-    gtk_progress_bar_set_fraction(app->progress_bar, fraction);
+    gtk_progress_bar_set_fraction(app->format_progress_bar, fraction);
     
     // Process GTK events to update the GUI
     while (gtk_events_pending()) {
@@ -126,10 +135,25 @@ int extract_percent_from_mkfs_output(char buffer[256]) {
 void *formatting_device_async(void *user_data) {
 
     App *app = (App *)user_data;
+    
+    // Make the cancel button visible before starting the formatting process
+    gtk_widget_set_visible(app->cancel_format_button, TRUE);
+    gtk_widget_set_visible(app->format_button, FALSE);
 	
 	// Combine the shred and mkfs commands with privilege elevation
-	gchar *combined_command = g_strdup_printf("pkexec sh -c '%s && sync && while fuser %s >/dev/null 2>&1; do sleep 1; done && %s && echo \"Your device has been formated succesfully!\"'", app->shred_data->shred_command, app->selected_usb_device, app->mkfs_data->mkfs_command);
-
+	
+	/*
+	gchar *combined_command = g_strdup_printf("pkexec sh -c '%s && sync && sleep 1 && umount -l %s && while fuser %s >/dev/null 2>&1; do sleep 1; done && %s && echo \"Your device has been formated succesfully!\"'", app->shred_data->shred_command,app->selected_usb_device, app->selected_usb_device, app->mkfs_data->mkfs_command);
+	*/
+	char cwd[1024];
+	gchar *combined_command = NULL;
+	    // Get the current working directory
+    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+        // Print the current working directory
+        printf("Current working directory: %s\n", cwd);
+		combined_command = g_strdup_printf("pkexec sh -c '%s/format_usb.sh /dev/sdb true ext4 MY_USB_LABEL'", cwd);
+    }
+	
 	// Open the pipe for reading
     FILE *output = popen(combined_command, "r");
     if (output == NULL) {
@@ -142,6 +166,12 @@ void *formatting_device_async(void *user_data) {
 	while (fgets(buffer, sizeof(buffer), output) != NULL) {
 		g_print("Buffer: %s", buffer);
 		fflush(stdout);
+		
+		// Check for format cancellation
+        if (cancel_format) {
+            pclose(output);
+            return NULL;
+        }
 
 		// Parse output to retrieve the percent status
 		gchar *info_message = g_strdup(buffer);  // Allocate new memory and copy buffer
@@ -152,11 +182,35 @@ void *formatting_device_async(void *user_data) {
 
     // Close the process
     int pclose_status = pclose(output);
+    
+    // Hide the cancel button visible AFTER the formatting process
+    gtk_widget_set_visible(app->cancel_format_button, FALSE);
+    gtk_widget_set_visible(app->format_button, TRUE);
+
 
     // Free resources
     g_free(combined_command);
 
     return NULL;
+}
+
+// Function to cancel the formatting thread
+void cancel_format_thread(App *app) {
+    if (app->formatting_thread_id != 0) {
+        pthread_cancel(app->formatting_thread_id);
+        app->formatting_thread_id = 0;
+    }
+}
+
+
+// Callback for cancel button clicked
+void on_cancel_format_button_clicked(GtkButton *button, gpointer user_data) {
+	App *app = (App *)user_data;
+    // Set the cancellation flag
+    //cancel_format = 1;
+    cancel_format_thread(app);
+    gchar *cancel_message = "Formatting process aborted!";
+    update_format_UI_information((gdouble)0, app, cancel_message);
 }
 
 // Modified on_format_button_clicked function
@@ -171,7 +225,6 @@ void on_format_button_clicked(GtkButton *button, gpointer user_data) {
     }
 
     // Build the shred command
-    app->new_device_label = "MYLABEL";
     gchar *shred_command = g_strdup_printf("shred -v -n 1 -s 1G --random-source=/dev/urandom %s 2>&1", app->selected_usb_device);
     
     // Create a data structure to pass to the thread
@@ -200,9 +253,12 @@ void on_format_button_clicked(GtkButton *button, gpointer user_data) {
         g_free(app->new_device_label);
         return;
     }
+    
+    // Save the thread ID in the App structure
+	app->formatting_thread_id = thread_id;
 
     // Detach the thread to allow it to run independently
-    pthread_detach(thread_id);
+    pthread_detach(app->formatting_thread_id);
 }
 
 // Signal handler for USB device selection change
@@ -220,6 +276,18 @@ void on_combobox_usb_changed(GtkComboBoxText *combobox, App *app) {
 
     // Print the selected USB device to the console
     g_print("Selected USB device: %s\n", app->selected_usb_device);
+}
+
+void on_entry_new_device_label_changed(GtkEntry *entry, App *app){
+    // Get the new text from the entry
+    const gchar *new_text = gtk_entry_get_text(entry);
+
+    // Update app->new_device_label with the new text
+    g_free(app->new_device_label);
+    app->new_device_label = g_strdup(new_text);
+
+    // Print the updated label to the console (optional)
+    g_print("New Device Label: %s\n", app->new_device_label);
 }
 
 // Signal handler for Format selection change
@@ -307,36 +375,81 @@ void populate_usb_devices(GtkComboBoxText *combobox, App *app) {
 
 // Initialize the application structure
 App *create_app(GtkBuilder *builder) {
+
     App *app = g_new(App, 1);
     app->builder = builder;
     app->main_grid = GTK_GRID(gtk_builder_get_object(builder, "main_grid"));
     app->format_grid = GTK_GRID(gtk_builder_get_object(builder, "format_grid"));
     app->create_bootable_grid = GTK_GRID(gtk_builder_get_object(builder, "create_bootable_grid"));
     app->select_device_grid = GTK_GRID(gtk_builder_get_object(builder, "select_device_grid"));
-    app->progress_bar = GTK_PROGRESS_BAR(gtk_builder_get_object(builder, "progress_bar"));
-    app->format_button = GTK_BUTTON(gtk_builder_get_object(builder, "format_button"));
+    
+    // HEADER
     app->header_label = GTK_LABEL(gtk_builder_get_object(builder, "header_label"));
     app->header_image = GTK_IMAGE(gtk_builder_get_object(builder, "header_image"));
-    app->combobox_usb = GTK_COMBO_BOX_TEXT(gtk_builder_get_object(builder, "combobox_usb"));
+    
+    // SELECT DEVICE
+    app->combobox_usb = GTK_COMBO_BOX_TEXT(gtk_builder_get_object(builder, "combobox_usb"));    
+        
+    // FORMAT
+    app->shred_data = g_new(ShredData, 1);
+	app->shred_data->shred_command = NULL;
+	app->shred_data->shred_message = NULL;
+	app->shred_data->shred_output = NULL;
+	app->shred_data->shred_percent = 0;
+
+	app->mkfs_data = g_new(MkfsData, 1);
+	app->mkfs_data->mkfs_command = NULL;
+	app->mkfs_data->mkfs_message = NULL;
+	app->mkfs_data->mkfs_output = NULL;
+	app->mkfs_data->mkfs_percent = 0;
+	
+	app->format_progress_bar_value = 0;
+	app->iso_progress_bar_value = 0;
+
+    app->entry_new_device_label = GTK_ENTRY(gtk_builder_get_object(builder, "entry_new_device_label"));
+    app->format_button = GTK_WIDGET(gtk_builder_get_object(builder, "format_button"));
+    app->cancel_format_button = GTK_WIDGET(gtk_builder_get_object(app->builder, "cancel_format_button"));
+    app->label_format_information = GTK_LABEL(gtk_builder_get_object(builder, "label_format_information"));
     app->combobox_format = GTK_COMBO_BOX_TEXT(gtk_builder_get_object(builder, "combobox_format"));
+    app->format_progress_bar = GTK_PROGRESS_BAR(gtk_builder_get_object(builder, "format_progress_bar"));
     gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(app->combobox_format), 0, "Select Format");
     gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(app->combobox_format), 1, "NTFS");
     gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(app->combobox_format), 2, "FAT32");
     gtk_combo_box_set_active(GTK_COMBO_BOX(app->combobox_format), 0);
-    app->label_format_information = GTK_LABEL(gtk_builder_get_object(builder, "label_format_information"));
-    
+                
+    // LOAD ISO
+    app->load_iso_button = GTK_BUTTON(gtk_builder_get_object(builder, "load_iso_button"));
+    app->cancel_load_iso_button = GTK_BUTTON(gtk_builder_get_object(builder, "cancel_load_iso_button"));
+    app->label_load_iso_information = GTK_LABEL(gtk_builder_get_object(builder, "label_load_iso_information"));   
+
     // Initialize the selected USB device to NULL
     app->selected_usb_device = NULL;
     app->selected_format = NULL;
-
-
+    app->new_device_label = NULL;
+    app->device_label = NULL;
+    
     return app;
 }
 
 void destroy_app(App *app) {
-	g_free(app->selected_usb_device);
+    g_free(app->selected_usb_device);
+    g_free(app->selected_format);
+    g_free(app->new_device_label);
+    g_free(app->device_label);
+
+    // Free ShredData members
+    g_free(app->shred_data->shred_command);
+    g_free(app->shred_data->shred_message);
+    g_free(app->shred_data);  // Free the ShredData itself
+
+    // Free MkfsData members
+    g_free(app->mkfs_data->mkfs_command);
+    g_free(app->mkfs_data->mkfs_message);
+    g_free(app->mkfs_data);  // Free the MkfsData itself
+
     g_free(app);
 }
+
 
 int main(int argc, char *argv[]) {
     
@@ -375,27 +488,24 @@ int main(int argc, char *argv[]) {
     // (for CSS styling)
     gtk_widget_set_name(GTK_WIDGET(app->header_label), "custom-header-label");
     gtk_widget_set_name(GTK_WIDGET(app->label_format_information), "format-information-label");
-    gtk_widget_set_name(GTK_WIDGET(app->progress_bar), "progress-bar");
     gtk_widget_set_name(GTK_WIDGET(app->format_grid), "format-grid");
     gtk_widget_set_name(GTK_WIDGET(app->header_image), "header_image");
     gtk_widget_set_name(GTK_WIDGET(app->create_bootable_grid), "create-bootable-grid");
     gtk_widget_set_name(GTK_WIDGET(app->main_grid), "main-grid");
     gtk_widget_set_name(GTK_WIDGET(app->select_device_grid), "select-device-grid");
     gtk_widget_set_name(GTK_WIDGET(app->format_button), "format-button");
+    gtk_widget_set_name(GTK_WIDGET(app->cancel_format_button), "cancel-format-button");
     
-
     // Populate USB devices in the combo box
     populate_usb_devices(app->combobox_usb, app);
 
-    // Button Format event
+    // Signal Event connect
     g_signal_connect(app->format_button, "clicked", G_CALLBACK(on_format_button_clicked), app);
+    g_signal_connect(app->cancel_format_button, "clicked", G_CALLBACK(on_cancel_format_button_clicked), app);
     g_signal_connect(app->combobox_usb, "changed", G_CALLBACK(on_combobox_usb_changed), app);
     g_signal_connect(app->combobox_format, "changed", G_CALLBACK(on_combobox_format_changed), app);
-    app->label_format_information = GTK_LABEL(gtk_builder_get_object(builder, "label_format_information"));
+    g_signal_connect(app->entry_new_device_label, "changed", G_CALLBACK(on_entry_new_device_label_changed), app);
 
-
-    GObject *button_quit = gtk_builder_get_object(builder, "quit");
-    g_signal_connect(button_quit, "clicked", G_CALLBACK(gtk_main_quit), NULL);
 
     gtk_main();
 

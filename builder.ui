@@ -137,6 +137,19 @@
 				<property name="width">2</property>
 			  </packing>
 			</child>
+			
+			<!-- Checkbox for "Don't overwrite the device" -->
+			<child>
+			  <object id="checkbox_dont_overwrite" class="GtkCheckButton">
+				<property name="label">Don't overwrite the device</property>
+				<property name="visible">True</property>
+			  </object>
+			  <packing>
+				<property name="left-attach">0</property>
+				<property name="top-attach">2</property>
+				<property name="width">2</property>
+			  </packing>
+			</child>
 		
 			<!-- Label "Select Format" -->
 			<child>
@@ -169,7 +182,7 @@
 			
 			<!-- Format Progress Bar -->
 			<child>
-			  <object id="progress_bar" class="GtkProgressBar">
+			  <object id="format_progress_bar" class="GtkProgressBar">
 				<property name="visible">True</property>
 				<property name="halign">start</property>
 				<property name="valign">center</property>
@@ -187,6 +200,18 @@
 			  <object id="format_button" class="GtkButton">
 			    <property name="visible">True</property>
 			    <property name="label">Format</property>
+			  </object>
+			  <packing>
+			    <property name="left-attach">1</property>
+			    <property name="top-attach">4</property>
+			  </packing>
+			</child>
+			
+			<!-- Button cancel -->
+			<child>
+			  <object id="cancel_format_button" class="GtkButton">
+			    <property name="visible">False</property>
+			    <property name="label">Cancel</property>
 			  </object>
 			  <packing>
 			    <property name="left-attach">1</property>
@@ -260,7 +285,7 @@
 			
 			<!-- ISO Process Progress Bar -->
 			<child>
-			  <object id="bootable_progress_bar" class="GtkProgressBar">
+			  <object id="load_iso_progress_bar" class="GtkProgressBar">
 				<property name="visible">True</property>
 				<property name="halign">start</property>
 				<property name="valign">center</property>
@@ -274,7 +299,7 @@
 		
 			<!-- Button Load ISO-->
 			<child>
-			  <object id="create_bootable_button" class="GtkButton">
+			  <object id="load_iso_button" class="GtkButton">
 			    <property name="visible">True</property>
 			    <property name="label">Load ISO</property>
 			  </object>
@@ -284,9 +309,21 @@
 			  </packing>
 			</child>
 			
+			<!-- Cancel Button Load ISO-->
+			<child>
+			  <object id="cancel_load_iso_button" class="GtkButton">
+			    <property name="visible">False</property>
+			    <property name="label"></property>
+			  </object>
+			  <packing>
+			    <property name="left-attach">1</property>
+			    <property name="top-attach">2</property>
+			  </packing>
+			</child>
+			
 			<!-- Label "Format information label" -->
 			<child>
-			  <object id="label_bootable_information" class="GtkLabel">
+			  <object id="label_load_iso_information" class="GtkLabel">
 			    <property name="visible">True</property>
 			    <property name="halign">start</property>
 				<property name="valign">center</property>
